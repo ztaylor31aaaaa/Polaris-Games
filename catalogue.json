@@ -4,7 +4,7 @@
     "name": "Orbit Dash",
     "description": "Guide your little spacecraft through a field of moving stars and collect glowing orbs.",
     "category": "Arcade",
-    "src": "games/orbit-dash/index.html",
+    "src": "games/orbit-dash/game.html",
     "image": "games/orbit-dash/icon.svg"
   }
 ]
