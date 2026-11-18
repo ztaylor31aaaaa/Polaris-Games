@@ -1,13 +1,5 @@
 [
   {
-    "id": "orbit-dash",
-    "name": "Orbit Dash",
-    "description": "Guide your little spacecraft through a field of moving stars and collect glowing orbs.",
-    "category": "Arcade",
-    "src": "games/orbit-dash/game.html",
-    "image": "games/orbit-dash/icon.svg"
-  },
-  {
     "id": "desert-sandbox",
     "name": "Desert Sandbox",
     "description": "Explore a 3D desert sandbox with vehicles, interactive objects and physics-based chaos.",
@@ -16,43 +8,11 @@
     "image": "games/desert-sandbox/icon.svg"
   },
   {
-    "id": "neon-drift",
-    "name": "Neon Drift",
-    "description": "A fast top-down arcade racer with drifting, boost pads, traffic, lap records and unlockable tracks.",
-    "category": "Racing",
-    "src": "games/neon-drift/index.html",
-    "image": "games/neon-drift/icon.svg"
-  },
-  {
-    "id": "circuit-shift",
-    "name": "Circuit Shift",
-    "description": "A route-building logic puzzle: rotate tiles, connect the power source to every receiver and solve increasingly tricky boards.",
-    "category": "Puzzle",
-    "src": "games/circuit-shift/index.html",
-    "image": "games/circuit-shift/icon.svg"
-  },
-  {
     "id": "star-salvager",
     "name": "Star Salvager: Frontier",
-    "description": "Explore four 3D planets, mine valuable resources, fight bandit drones, return cargo to base and unlock a deep upgrade tree.",
+    "description": "Explore four 3D planets, mine valuable resources, evade raider patrols, return cargo to base and unlock a deep upgrade tree.",
     "category": "Adventure",
     "src": "games/star-salvager/index.html",
     "image": "games/star-salvager/icon.svg"
-  },
-  {
-    "id": "garden-architect",
-    "name": "Garden Architect",
-    "description": "Build a tiny living island: place plants, water channels and habitats, balance resources and discover ecosystem combos.",
-    "category": "Strategy",
-    "src": "games/garden-architect/index.html",
-    "image": "games/garden-architect/icon.svg"
-  },
-  {
-    "id": "pattern-pulse",
-    "name": "Pattern Pulse",
-    "description": "A rhythm-and-memory challenge with evolving sequences, streak multipliers, difficulty settings and a daily-style endless mode.",
-    "category": "Brain",
-    "src": "games/pattern-pulse/index.html",
-    "image": "games/pattern-pulse/icon.svg"
   }
 ]
