@@ -1,8 +1,8 @@
 {
   "id": "star-salvager",
-  "name": "Star Salvager",
+  "name": "Star Salvager: Frontier",
   "description": "A 3D planetary mining and survival adventure. Explore four worlds, harvest rare resources, fight bandit drones, haul cargo back to base and build a branching upgrade tree.",
-  "category": "Arcade",
-  "controls": "Keyboard and mouse or touch controls.",
+  "category": "Adventure",
+  "controls": "WASD move · Shift sprint · Space jump · Hold F to mine · E interact · Q EMP pulse · Tab menu · Right-click drag to look.",
   "version": "2.0.0"
 }
