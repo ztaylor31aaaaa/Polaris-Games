@@ -6,5 +6,21 @@
     "category": "Arcade",
     "src": "games/orbit-dash/game.html",
     "image": "games/orbit-dash/icon.svg"
+  },
+  {
+    "id": "spider-swing-3d",
+    "name": "Spider-Swing 3D: City Web-Slinger",
+    "description": "Swing through a procedural 3D city, build momentum and explore from different camera views.",
+    "category": "Action",
+    "src": "games/spider-swing-3d/index.html",
+    "image": "games/spider-swing-3d/icon.svg"
+  },
+  {
+    "id": "desert-sandbox",
+    "name": "Desert Sandbox",
+    "description": "Explore a 3D desert sandbox with vehicles, interactive objects and physics-based chaos.",
+    "category": "Sandbox",
+    "src": "games/desert-sandbox/index.html",
+    "image": "games/desert-sandbox/icon.svg"
   }
 ]

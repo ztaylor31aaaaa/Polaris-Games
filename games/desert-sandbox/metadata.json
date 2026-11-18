@@ -1,0 +1,10 @@
+{
+  "id": "desert-sandbox",
+  "name": "Desert Sandbox",
+  "version": "1.0.0",
+  "description": "Explore a 3D desert sandbox with vehicles, interactive objects and physics-based chaos.",
+  "category": "Sandbox",
+  "author": "Polaris Games",
+  "entry": "index.html",
+  "icon": "icon.svg"
+}
