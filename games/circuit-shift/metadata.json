@@ -1,7 +1,0 @@
-{
-  "id": "circuit-shift",
-  "name": "Circuit Shift",
-  "description": "A route-building logic puzzle: rotate tiles, connect the power source to every receiver and solve increasingly tricky boards.",
-  "category": "Puzzle",
-  "controls": "Keyboard and mouse or touch controls."
-}
