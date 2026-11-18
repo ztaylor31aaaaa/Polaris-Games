@@ -1507,39 +1507,27 @@
         const overlay = document.getElementById('overlay');
         const startBtn = document.getElementById('start-btn');
         let isPlaying = false;
-        let hasHadPointerLock = false;
-
-        function startGame() {
-            sound.init();
-            isPlaying = true;
-            overlay.style.opacity = '0';
-            overlay.style.pointerEvents = 'none';
-        }
-
-        // Automatically dismiss the controls screen after 10 seconds.
-        // This also starts the game if the embedded browser blocks pointer lock.
-        const autoStartTimer = setTimeout(startGame, 10000);
 
         startBtn.addEventListener('click', () => {
-            clearTimeout(autoStartTimer);
             sound.init();
             try {
-                const lockRequest = canvas.requestPointerLock();
-                if (lockRequest && typeof lockRequest.catch === 'function') {
-                    lockRequest.catch(() => startGame());
-                }
+                canvas.requestPointerLock();
             } catch (e) {
-                startGame();
+                // Fallback if sandbox blocks pointer lock
+                isPlaying = true;
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
             }
         });
 
         document.addEventListener('pointerlockchange', () => {
             if (document.pointerLockElement === canvas) {
-                hasHadPointerLock = true;
-                startGame();
-            } else if (hasHadPointerLock) {
+                isPlaying = true;
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
+            } else {
                 isPlaying = false;
-                // Release active webs on pause so the player doesn't hang endlessly.
+                // Release active webs on pause so player doesn't hang endlessly
                 player.leftWeb.active = false;
                 player.rightWeb.active = false;
                 sound.updateWind(0);
