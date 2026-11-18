@@ -1,18 +1,4 @@
 [
-  {
-    "id": "desert-sandbox",
-    "name": "Desert Sandbox",
-    "description": "Explore a 3D desert sandbox with vehicles, interactive objects and physics-based chaos.",
-    "category": "Sandbox",
-    "src": "games/desert-sandbox/index.html",
-    "image": "games/desert-sandbox/icon.svg"
-  },
-  {
-    "id": "star-salvager",
-    "name": "Star Salvager: Frontier",
-    "description": "Explore four 3D planets, mine valuable resources, evade raider patrols, return cargo to base and unlock a deep upgrade tree.",
-    "category": "Adventure",
-    "src": "games/star-salvager/index.html",
-    "image": "games/star-salvager/icon.svg"
-  }
+  {"id":"desert-sandbox","name":"Desert Sandbox","description":"Explore a 3D desert sandbox with vehicles, interactive objects and physics-based chaos.","category":"Sandbox","src":"games/desert-sandbox/index.html","image":"games/desert-sandbox/icon.svg"},
+  {"id":"star-salvager","name":"Star Salvager: Frontier","description":"Explore four 3D planets, mine valuable resources, evade raider patrols, return cargo to base and unlock a deep upgrade tree.","category":"Adventure","src":"games/star-salvager/index.html","image":"games/star-salvager/icon.svg"}
 ]
