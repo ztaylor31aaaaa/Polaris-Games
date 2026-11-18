@@ -997,4 +997,642 @@
                 const dirToCand = toCand.clone().divideScalar(dist);
                 const dot = forwardDir.dot(dirToCand);
 
-                // Must be within ~42 degree cone in front of player
+                // Must be within ~42 degree cone in front of player                if (dot > 0.72) {
+                    const sideAlignment = rightDir.dot(dirToCand) * sideBias;
+                    const heightBonus = (candidate.y - origin.y) * 0.004;
+                    const score = dot * 2.2 + sideAlignment * 0.35 + heightBonus - (dist / MAX_WEB_RANGE) * 0.3;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestAssistPoint = candidate;
+                    }
+                }
+            }
+
+            return bestAssistPoint;
+        }
+
+        // ==========================================
+        // 7. PLAYER STATE & PENDULUM SWING PHYSICS
+        // ==========================================
+        const player = {
+            pos: new THREE.Vector3(0, 125, 0),
+            vel: new THREE.Vector3(0, 0, -24),
+            yaw: 0,
+            pitch: -0.08,
+            radius: 0.75,
+            height: 1.8,
+            grounded: false,
+            wallRunning: false,
+            thirdPerson: false,
+            leftWeb: { active: false, anchor: new THREE.Vector3(), length: 0 },
+            rightWeb: { active: false, anchor: new THREE.Vector3(), length: 0 },
+            swingChain: 0,
+            bestChain: 0,
+            totalDist: 0,
+            lastAnchorHash: ''
+        };
+
+        const keys = {
+            KeyW: false,
+            KeyA: false,
+            KeyS: false,
+            KeyD: false,
+            Space: false,
+            ShiftLeft: false,
+            ShiftRight: false
+        };
+
+        // Shoot Left or Right Web
+        function shootWeb(hand) {
+            const web = hand === 'left' ? player.leftWeb : player.rightWeb;
+            const sideBias = hand === 'left' ? -1 : 1;
+
+            const eyePos = getEyePosition();
+            const lookDir = getLookDirection();
+            const anchor = findWebAnchor(eyePos, lookDir, sideBias);
+
+            if (anchor) {
+                web.active = true;
+                web.anchor.copy(anchor);
+                // Slightly shorter initial taut length gives immediate satisfying upward/forward tug
+                web.length = Math.max(10, player.pos.distanceTo(anchor) * 0.94);
+
+                // Increment swing combo if attaching to a new anchor point while airborne
+                const hash = `${Math.round(anchor.x)},${Math.round(anchor.y)},${Math.round(anchor.z)}`;
+                if (hash !== player.lastAnchorHash) {
+                    player.swingChain++;
+                    player.lastAnchorHash = hash;
+                    if (player.swingChain > player.bestChain) {
+                        player.bestChain = player.swingChain;
+                    }
+                    pulseComboHUD();
+                }
+
+                // Small initial web-pull impulse so attaching feels snappy
+                const pullDir = new THREE.Vector3().subVectors(anchor, player.pos).normalize();
+                player.vel.addScaledVector(pullDir, 6.5);
+                if (player.grounded) {
+                    player.pos.y += 0.4;
+                    player.grounded = false;
+                }
+
+                sound.playThwip(hand === 'left' ? 1.04 : 0.96);
+                spawnWebBurst(anchor, hand === 'left' ? 0x38bdf8 : 0xfb7185);
+            }
+        }
+
+        function releaseWeb(hand) {
+            const web = hand === 'left' ? player.leftWeb : player.rightWeb;
+            if (web.active) {
+                web.active = false;
+                // Release arc boost: slight upward lift when releasing near bottom/upswing
+                if (player.vel.y > -2) {
+                    player.vel.y += 3.2;
+                }
+            }
+        }
+
+        function triggerWebZipJump() {
+            const lookDir = getLookDirection();
+            const horizForward = new THREE.Vector3(lookDir.x, 0, lookDir.z).normalize();
+
+            if (player.leftWeb.active || player.rightWeb.active) {
+                // Web-Zip Launch! Detaches webs and catapults player forward & upward
+                player.leftWeb.active = false;
+                player.rightWeb.active = false;
+
+                const currentSpeed = player.vel.length();
+                const launchSpeed = Math.max(currentSpeed * 1.15, 36);
+                player.vel.copy(horizForward).multiplyScalar(launchSpeed);
+                player.vel.y = Math.max(player.vel.y * 0.65 + 17, 19);
+
+                sound.playJumpBoost();
+            } else if (player.grounded || player.wallRunning) {
+                // Super Heroic Rooftop / Street / Wall Leap
+                player.grounded = false;
+                player.wallRunning = false;
+                player.vel.y = 22;
+                player.vel.addScaledVector(horizForward, 14);
+                sound.playJumpBoost();
+            }
+        }
+
+        function getEyePosition() {
+            return new THREE.Vector3(player.pos.x, player.pos.y + 0.7, player.pos.z);
+        }
+
+        function getLookDirection() {
+            const dir = new THREE.Vector3(0, 0, -1);
+            const euler = new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ');
+            dir.applyEuler(euler);
+            return dir.normalize();
+        }
+
+        // Apply 3D Pendulum Constraint for a single attached web
+        function applyPendulumConstraint(web, dt) {
+            if (!web.active) return;
+
+            const toPlayer = new THREE.Vector3().subVectors(player.pos, web.anchor);
+            const dist = toPlayer.length();
+            if (dist < 0.001) return;
+
+            const radialDir = toPlayer.clone().divideScalar(dist);
+
+            // Gradual web reel-in if holding shift isn't active, helping player clear rooftops
+            if (web.length > 14) {
+                web.length -= 2.2 * dt;
+            }
+
+            // If player stretches past web length, enforce pendulum arc constraint
+            if (dist > web.length) {
+                // Snap position onto sphere of radius web.length
+                player.pos.copy(web.anchor).addScaledVector(radialDir, web.length);
+
+                // Remove outward radial velocity component (converts downward fall into tangential swing speed!)
+                const radialVel = player.vel.dot(radialDir);
+                if (radialVel > 0) {
+                    player.vel.addScaledVector(radialDir, -radialVel);
+                    // Subtle pendulum pump bonus to reward deep swings
+                    player.vel.multiplyScalar(1.0035);
+                }
+            }
+        }
+
+        // Resolve collisions against ground and building AABBs
+        function resolveCollisions(dt) {
+            player.grounded = false;
+            player.wallRunning = false;
+
+            // 1. Ground collision (y = 0)
+            if (player.pos.y <= player.height * 0.5) {
+                player.pos.y = player.height * 0.5;
+                if (player.vel.y < 0) player.vel.y = 0;
+                player.grounded = true;
+
+                // Touching street resets swing chain
+                if (player.swingChain > 0) {
+                    player.swingChain = 0;
+                    player.lastAnchorHash = '';
+                }
+            }
+
+            // 2. Building AABBs
+            const r = player.radius;
+            const halfH = player.height * 0.5;
+
+            for (let i = 0; i < collidableBuildings.length; i++) {
+                const b = collidableBuildings[i];
+
+                // Broadphase check
+                if (
+                    player.pos.x + r < b.minX || player.pos.x - r > b.maxX ||
+                    player.pos.z + r < b.minZ || player.pos.z - r > b.maxZ ||
+                    player.pos.y + halfH < b.minY || player.pos.y - halfH > b.maxY
+                ) {
+                    continue;
+                }
+
+                // Compute penetration depths on each axis
+                const penLeft = (player.pos.x + r) - b.minX;
+                const penRight = b.maxX - (player.pos.x - r);
+                const penBottom = (player.pos.y + halfH) - b.minY;
+                const penTop = b.maxY - (player.pos.y - halfH);
+                const penFront = (player.pos.z + r) - b.minZ;
+                const penBack = b.maxZ - (player.pos.z - r);
+
+                const minPen = Math.min(penLeft, penRight, penTop, penBottom, penFront, penBack);
+
+                if (minPen === penTop && player.vel.y <= 0) {
+                    // Landed on Rooftop!
+                    player.pos.y = b.maxY + halfH;
+                    player.vel.y = 0;
+                    player.grounded = true;
+                    if (player.swingChain > 0) {
+                        player.swingChain = 0;
+                        player.lastAnchorHash = '';
+                    }
+                } else if (minPen === penLeft) {
+                    player.pos.x = b.minX - r;
+                    if (player.vel.x > 0) player.vel.x = 0;
+                    player.wallRunning = true;
+                } else if (minPen === penRight) {
+                    player.pos.x = b.maxX + r;
+                    if (player.vel.x < 0) player.vel.x = 0;
+                    player.wallRunning = true;
+                } else if (minPen === penFront) {
+                    player.pos.z = b.minZ - r;
+                    if (player.vel.z > 0) player.vel.z = 0;
+                    player.wallRunning = true;
+                } else if (minPen === penBack) {
+                    player.pos.z = b.maxZ + r;
+                    if (player.vel.z < 0) player.vel.z = 0;
+                    player.wallRunning = true;
+                }
+
+                // Spider Wall-Run Parkour! Holding W while touching a wall runs smoothly upward
+                if (player.wallRunning && keys.KeyW) {
+                    player.vel.y = Math.max(player.vel.y, 16);
+                }
+            }
+        }
+
+        function updatePhysics(dt) {
+            const lookDir = getLookDirection();
+            const forward = new THREE.Vector3(lookDir.x, 0, lookDir.z).normalize();
+            const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+            // WASD directional input vector
+            const moveInput = new THREE.Vector3();
+            if (keys.KeyW) moveInput.add(forward);
+            if (keys.KeyS) moveInput.sub(forward);
+            if (keys.KeyD) moveInput.add(right);
+            if (keys.KeyA) moveInput.sub(right);
+            if (moveInput.lengthSq() > 0) moveInput.normalize();
+
+            const isSwinging = player.leftWeb.active || player.rightWeb.active;
+            const isDualSlingshot = player.leftWeb.active && player.rightWeb.active;
+            const isDiving = (keys.ShiftLeft || keys.ShiftRight) && !player.grounded && !isSwinging;
+
+            // Gravity
+            const gravity = isDiving ? 54.0 : 27.5;
+            player.vel.y -= gravity * dt;
+
+            // Steering / Movement forces
+            if (player.grounded) {
+                const groundAccel = 85.0;
+                player.vel.addScaledVector(moveInput, groundAccel * dt);
+                // Ground friction
+                player.vel.x *= Math.pow(0.015, dt);
+                player.vel.z *= Math.pow(0.015, dt);
+            } else if (isSwinging) {
+                // Air pumping / directional swing control
+                const swingSteer = 26.0;
+                player.vel.addScaledVector(moveInput, swingSteer * dt);
+
+                // Dual-Web Slingshot Mechanic: pulls player rapidly toward midpoint of both anchors!
+                if (isDualSlingshot) {
+                    const midpoint = new THREE.Vector3()
+                        .addVectors(player.leftWeb.anchor, player.rightWeb.anchor)
+                        .multiplyScalar(0.5);
+                    const slingshotDir = new THREE.Vector3().subVectors(midpoint, player.pos).normalize();
+                    player.vel.addScaledVector(slingshotDir, 52.0 * dt);
+                    player.leftWeb.length = Math.max(10, player.leftWeb.length - 18 * dt);
+                    player.rightWeb.length = Math.max(10, player.rightWeb.length - 18 * dt);
+                }
+            } else {
+                // Mid-air glide steering
+                const airSteer = 20.0;
+                player.vel.addScaledVector(moveInput, airSteer * dt);
+            }
+
+            // Dive kinetic energy conversion: diving builds speed, pulling out converts into forward glide
+            if (isDiving) {
+                player.vel.addScaledVector(forward, 14.0 * dt);
+            }
+
+            // Subtle aerodynamic drag (very low so high speeds feel exhilarating)
+            player.vel.multiplyScalar(Math.pow(0.92, dt));
+
+            // Cap terminal velocity at ~290 km/h (80 m/s) for stability
+            if (player.vel.length() > 82) {
+                player.vel.setLength(82);
+            }
+
+            // Integrate position
+            const prevPos = player.pos.clone();
+            player.pos.addScaledVector(player.vel, dt);
+
+            // Apply pendulum constraints
+            applyPendulumConstraint(player.leftWeb, dt);
+            applyPendulumConstraint(player.rightWeb, dt);
+
+            // Resolve building & street collisions
+            resolveCollisions(dt);
+
+            // Track horizontal distance traveled
+            const dx = player.pos.x - prevPos.x;
+            const dz = player.pos.z - prevPos.z;
+            player.totalDist += Math.hypot(dx, dz);
+
+            // Update Wind Audio
+            sound.updateWind(player.vel.length());
+        }
+
+        // ==========================================
+        // 8. CAMERA, AVATAR POSE & WEB VISUALS
+        // ==========================================
+        const currentCamPos = new THREE.Vector3();
+        let currentFov = 75;
+
+        function updateCameraAndVisuals(dt, elapsed) {
+            const lookDir = getLookDirection();
+            const rightDir = new THREE.Vector3().crossVectors(lookDir, new THREE.Vector3(0, 1, 0)).normalize();
+            const upDir = new THREE.Vector3().crossVectors(rightDir, lookDir).normalize();
+
+            // Dynamic FOV warp based on speed
+            const speed = player.vel.length();
+            const targetFov = 75 + Math.min(Math.max((speed - 18) * 0.65, 0), 30);
+            currentFov += (targetFov - currentFov) * Math.min(1, dt * 8);
+            camera.fov = currentFov;
+            camera.updateProjectionMatrix();
+
+            // Position Hero Avatar
+            heroGroup.position.copy(player.pos);
+            heroGroup.rotation.y = player.yaw;
+
+            const isSwinging = player.leftWeb.active || player.rightWeb.active;
+            const isDiving = (keys.ShiftLeft || keys.ShiftRight) && !player.grounded && !isSwinging;
+
+            // Dynamic Spider-Hero Pose Animation
+            if (player.thirdPerson) {
+                heroGroup.visible = true;
+                if (isDiving) {
+                    torsoMesh.rotation.x = -1.15;
+                    headMesh.rotation.x = 0.6;
+                    leftArmPivot.rotation.x = 2.7;
+                    rightArmPivot.rotation.x = 2.7;
+                    leftLegPivot.rotation.x = -0.3;
+                    rightLegPivot.rotation.x = -0.5;
+                } else if (isSwinging) {
+                    torsoMesh.rotation.x = -0.35;
+                    headMesh.rotation.x = 0.15;
+                    leftArmPivot.rotation.x = player.leftWeb.active ? 2.4 : -0.4;
+                    rightArmPivot.rotation.x = player.rightWeb.active ? 2.4 : -0.4;
+                    leftLegPivot.rotation.x = 0.65;
+                    rightLegPivot.rotation.x = -0.35;
+                } else if (!player.grounded) {
+                    // Mid-air acrobatic tuck
+                    torsoMesh.rotation.x = -0.25;
+                    leftArmPivot.rotation.x = 0.8 + Math.sin(elapsed * 8) * 0.2;
+                    rightArmPivot.rotation.x = -0.6 - Math.sin(elapsed * 8) * 0.2;
+                    leftLegPivot.rotation.x = 0.85;
+                    rightLegPivot.rotation.x = 0.35;
+                } else {
+                    // Running / Idle on rooftop
+                    const runCycle = speed > 1.5 ? Math.sin(elapsed * 14) * 0.8 : 0;
+                    torsoMesh.rotation.x = speed > 1.5 ? -0.2 : 0;
+                    leftArmPivot.rotation.x = runCycle;
+                    rightArmPivot.rotation.x = -runCycle;
+                    leftLegPivot.rotation.x = -runCycle;
+                    rightLegPivot.rotation.x = runCycle;
+                }
+
+                // Smooth Over-the-Shoulder 3rd-Person Camera
+                const desiredCamPos = player.pos.clone()
+                    .addScaledVector(lookDir, -4.6)
+                    .addScaledVector(upDir, 1.35)
+                    .addScaledVector(rightDir, 0.55);
+
+                // Prevent camera from clipping below ground
+                desiredCamPos.y = Math.max(0.8, desiredCamPos.y);
+                currentCamPos.lerp(desiredCamPos, Math.min(1, dt * 18));
+                camera.position.copy(currentCamPos);
+                camera.lookAt(player.pos.clone().addScaledVector(lookDir, 20));
+            } else {
+                // First-Person View
+                heroGroup.visible = false;
+                const eyePos = getEyePosition();
+                // Subtle camera roll when swinging sideways
+                camera.position.copy(eyePos);
+                const euler = new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ');
+                const lateralVel = player.vel.dot(rightDir);
+                euler.z = THREE.MathUtils.clamp(-lateralVel * 0.0045, -0.18, 0.18);
+                camera.quaternion.setFromEuler(euler);
+            }
+
+            // Update 3D Web Strands
+            updateWebStrand(leftWebMesh, player.leftWeb, -1, lookDir, rightDir, upDir);
+            updateWebStrand(rightWebMesh, player.rightWeb, 1, lookDir, rightDir, upDir);
+        }
+
+        function updateWebStrand(mesh, web, sideSign, lookDir, rightDir, upDir) {
+            if (!web.active) {
+                mesh.visible = false;
+                return;
+            }
+            mesh.visible = true;
+
+            // Wrist launch origin
+            const origin = new THREE.Vector3();
+            if (player.thirdPerson) {
+                origin.copy(player.pos)
+                    .addScaledVector(rightDir, sideSign * 0.45)
+                    .addScaledVector(upDir, 0.65)
+                    .addScaledVector(lookDir, 0.35);
+            } else {
+                origin.copy(camera.position)
+                    .addScaledVector(rightDir, sideSign * 0.42)
+                    .addScaledVector(upDir, -0.32)
+                    .addScaledVector(lookDir, 0.45);
+            }
+
+            const dist = origin.distanceTo(web.anchor);
+            mesh.position.copy(origin);
+            mesh.lookAt(web.anchor);
+            mesh.scale.set(1, 1, dist);
+        }
+
+        // ==========================================
+        // 9. HUD & VISUAL FEEDBACK UPDATES
+        // ==========================================
+        const elSpeed = document.getElementById('hud-speed');
+        const elAlt = document.getElementById('hud-alt');
+        const elDist = document.getElementById('hud-dist');
+        const elCombo = document.getElementById('hud-combo');
+        const elBest = document.getElementById('hud-best');
+        const elComboBox = document.getElementById('combo-box');
+        const elCrosshair = document.getElementById('crosshair-ring');
+        const elArcLeft = document.getElementById('web-arc-left');
+        const elArcRight = document.getElementById('web-arc-right');
+        const elPillLeft = document.getElementById('pill-left');
+        const elPillRight = document.getElementById('pill-right');
+        const elPillView = document.getElementById('pill-view');
+        const elSpeedLines = document.getElementById('speed-lines');
+        const elDiveVignette = document.getElementById('dive-vignette');
+
+        function pulseComboHUD() {
+            elComboBox.style.transform = 'scale(1.12)';
+            setTimeout(() => {
+                elComboBox.style.transform = 'scale(1)';
+            }, 130);
+        }
+
+        function updateHUD() {
+            const kmh = Math.round(player.vel.length() * 3.6);
+            elSpeed.textContent = kmh;
+            elAlt.textContent = Math.max(0, Math.round(player.pos.y - 1));
+            elDist.textContent = Math.round(player.totalDist);
+            elCombo.textContent = player.swingChain;
+            elBest.textContent = player.bestChain;
+
+            // Crosshair range indicator
+            const target = findWebAnchor(getEyePosition(), getLookDirection(), 0);
+            if (target) {
+                elCrosshair.classList.add('in-range');
+            } else {
+                elCrosshair.classList.remove('in-range');
+            }
+
+            // Left / Right Web UI highlights
+            if (player.leftWeb.active) {
+                elArcLeft.classList.add('active');
+                elPillLeft.className = 'px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-sky-500/25 border border-sky-400 text-sky-300 shadow-lg shadow-sky-500/20';
+            } else {
+                elArcLeft.classList.remove('active');
+                elPillLeft.className = 'px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-slate-950/70 border border-slate-700/60 text-slate-400';
+            }
+
+            if (player.rightWeb.active) {
+                elArcRight.classList.add('active');
+                elPillRight.className = 'px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-rose-500/25 border border-rose-400 text-rose-300 shadow-lg shadow-rose-500/20';
+            } else {
+                elArcRight.classList.remove('active');
+                elPillRight.className = 'px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-slate-950/70 border border-slate-700/60 text-slate-400';
+            }
+
+            // Speed lines opacity above 95 km/h
+            const speedRatio = Math.min(Math.max((kmh - 90) / 140, 0), 1);
+            elSpeedLines.style.opacity = speedRatio.toFixed(2);
+
+            // Dive vignette
+            const isSwinging = player.leftWeb.active || player.rightWeb.active;
+            const isDiving = (keys.ShiftLeft || keys.ShiftRight) && !player.grounded && !isSwinging;
+            elDiveVignette.style.opacity = isDiving ? '1' : '0';
+        }
+
+        // ==========================================
+        // 10. POINTER LOCK & INPUT CONTROLS
+        // ==========================================
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('start-btn');
+        let isPlaying = false;
+
+        startBtn.addEventListener('click', () => {
+            sound.init();
+            try {
+                canvas.requestPointerLock();
+            } catch (e) {
+                // Fallback if sandbox blocks pointer lock
+                isPlaying = true;
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
+            }
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === canvas) {
+                isPlaying = true;
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
+            } else {
+                isPlaying = false;
+                // Release active webs on pause so player doesn't hang endlessly
+                player.leftWeb.active = false;
+                player.rightWeb.active = false;
+                sound.updateWind(0);
+                startBtn.textContent = 'Resume Swinging';
+                overlay.style.opacity = '1';
+                overlay.style.pointerEvents = 'auto';
+            }
+        });
+
+        // Mouse Look
+        document.addEventListener('mousemove', (e) => {
+            if (!isPlaying) return;
+            const sensitivity = 0.0022;
+            player.yaw -= e.movementX * sensitivity;
+            player.pitch -= e.movementY * sensitivity;
+            player.pitch = Math.max(-Math.PI * 0.48, Math.min(Math.PI * 0.48, player.pitch));
+        });
+
+        // Left & Right Click Web Shooting
+        window.addEventListener('mousedown', (e) => {
+            if (!isPlaying) return;
+            if (e.button === 0) {
+                shootWeb('left');
+            } else if (e.button === 2) {
+                shootWeb('right');
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+                releaseWeb('left');
+            } else if (e.button === 2) {
+                releaseWeb('right');
+            }
+        });
+
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Keyboard Inputs
+        window.addEventListener('keydown', (e) => {
+            if (e.code in keys) {
+                keys[e.code] = true;
+            }
+            if (!isPlaying) return;
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                triggerWebZipJump();
+            } else if (e.code === 'KeyC') {
+                player.thirdPerson = !player.thirdPerson;
+                elPillView.textContent = player.thirdPerson ? '3RD PERSON [C]' : '1ST PERSON [C]';
+            } else if (e.code === 'KeyT') {
+                toggleTheme();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code in keys) {
+                keys[e.code] = false;
+            }
+        });
+
+        // Responsive Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ==========================================
+        // 11. INITIALIZATION & MAIN GAME LOOP
+        // ==========================================
+        let lastTime = performance.now();
+        let elapsedTime = 0;
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+
+            // Always generate city chunks around player
+            updateCityChunks(player.pos);
+
+            if (isPlaying) {
+                elapsedTime += dt;
+                updatePhysics(dt);
+                updateParticles(dt);
+            } else {
+                // Gentle cinematic hover preview behind start modal
+                elapsedTime += dt * 0.4;
+                player.yaw = Math.sin(elapsedTime * 0.35) * 0.35;
+            }
+
+            updateCameraAndVisuals(dt, elapsedTime);
+            updateHUD();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            updateCityChunks(player.pos);
+            currentCamPos.copy(player.pos);
+            lastTime = performance.now();
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>
