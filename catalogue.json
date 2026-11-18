@@ -33,9 +33,9 @@
   },
   {
     "id": "star-salvager",
-    "name": "Star Salvager",
-    "description": "Pilot a tiny salvage ship, tow drifting cargo, dodge hazards, upgrade your engine and complete contracts across a starfield.",
-    "category": "Arcade",
+    "name": "Star Salvager: Frontier",
+    "description": "Explore four 3D planets, mine valuable resources, fight bandit drones, return cargo to base and unlock a deep upgrade tree.",
+    "category": "Adventure",
     "src": "games/star-salvager/index.html",
     "image": "games/star-salvager/icon.svg"
   },
